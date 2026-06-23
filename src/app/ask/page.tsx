@@ -38,25 +38,48 @@ export default function AskBeastGuidePage() {
         setIsLoading(true);
 
         try {
-            const response = await fetch("/api/chat", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    message: trimmedInput,
-                }),
-            });
+            let response: Response;
+            try {
+                response = await fetch("/api/chat", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        message: trimmedInput,
+                    }),
+                });
+            } catch (networkError) {
+                throw new Error(
+                    networkError instanceof Error && networkError.message.includes("Failed to fetch")
+                        ? "Network error — please check your internet connection and try again."
+                        : "Could not reach the server. Please try again."
+                );
+            }
 
-            const data = await response.json();
+            let data: unknown;
+            try {
+                data = await response.json();
+            } catch {
+                throw new Error(
+                    `Server returned an invalid response (HTTP ${response.status}). Please try again.`
+                );
+            }
 
             if (!response.ok) {
-                throw new Error(data.error || "Could not get an AI response.");
+                const errorBody = data as { error?: string };
+                throw new Error(errorBody.error || `Request failed with status ${response.status}.`);
+            }
+
+            const successBody = data as { reply?: string };
+
+            if (typeof successBody.reply !== "string" || successBody.reply.trim().length === 0) {
+                throw new Error("The AI returned an empty response. Please try rephrasing your question.");
             }
 
             const assistantMessage: Message = {
                 role: "assistant",
-                text: data.reply,
+                text: successBody.reply,
             };
 
             setMessages((currentMessages) => [...currentMessages, assistantMessage]);
@@ -66,7 +89,7 @@ export default function AskBeastGuidePage() {
                 text:
                     error instanceof Error
                         ? `Sorry, I could not respond right now: ${error.message}`
-                        : "Sorry, I could not respond right now. Please try again.",
+                        : "Sorry, something went wrong. Please try again.",
             };
 
             setMessages((currentMessages) => [...currentMessages, errorMessage]);
